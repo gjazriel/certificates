@@ -1,103 +1,270 @@
+# standard lib imports
+import sys
+from copy import copy
+import datetime
+# inport from openpyxl
 from openpyxl import Workbook
 from openpyxl import load_workbook
 
-def printSheetRow (row, rowType, fileName):
+
+def cventDateFormat(dateString):
+    """ Converts the dateString:
+        from  YYYY-MM-DD HH:MM:SS
+        to    MM/DD/YYYY HH:MM
+    """
+    localS = dateString.lstrip()
+    y=localS[0:4]
+    m=localS[5:7]
+    d=localS[8:10]
+    t=localS[11:16]
+    cventDate=m+'/'+d+'/'+y+' '+t
+    return cventDate
+
+
+def copyColumn(sheetWS, fromColumn, toColumn):
+    """ Copy the column from row 2 to max row. We do not want to change the header.
+    """
+    for row in range(2,sheetWS.max_row+1):
+        sheetWS.cell(row=row, column=toColumn).value = sheetWS.cell(row=row, column=fromColumn).value
+
+
+def setCompany(sheetWS):
+    """ Copy the values in the organization column to the company column
+    """
+    fromColumn = findCellInRow(sheetWS[1], 'Organization')
+    toColumn = findCellInRow(sheetWS[1], 'Company')
+    copyColumn(sheetWS, fromColumn, toColumn)
+
+
+def setParticipatedDict(participatedDict):
+    participatedDict["Attended"] = "Yes"
+    participatedDict["Yes"] = "Yes"
+
+   
+def translateValues(columnName, sheetWS, translationDict):
+    """ This function finds the column that needs translating
+        and then updates the values based on the dictionary.
+    """
+    column = findCellInRow(sheetWS[1], columnName)
+    for row in range(2,sheetWS.max_row+1):
+        cell = sheetWS.cell(row=row, column=column)
+        if(cell.value is not None) and(cell.value != ''):
+            cell.value = translationDict[cell.value]
+
+
+def copyRow(fromRow, fromWS, toRow, toWS):
+    """ This function copies a row of spreadsheet data
+    """
+    for column in range(1, fromWS.max_column+1):
+        toCell = toWS.cell(row=toRow, column=column)
+        fromCell = fromWS.cell(row=fromRow, column=column)
+        toCell.value = fromCell.value
+        toCell.data_type = fromCell.data_type
+#        if fromCell.has_style:
+#            toCell._style = copy(fromCell._style)
+        if fromCell.hyperlink:
+            toCell._hyperlink = copy(fromCell.hyperlink)
+        if fromCell.comment:
+            toCell.comment = copy(fromCell.comment)
+    
+
+def printSheetRow(row, rowType, fileName):
     """"Print a row of a spreadsheet"""
-    print ("\n", rowType, " from", fileName, ":")
+    print("\n", rowType, " from", fileName, ":")
     for cell in row:
-        print (cell, " = ", cell.value)
+        print(cell, " = ", cell.value)
     return 1
 
-def findCellInRow (row, cellValue):
+
+def findCellInRow(row, cellValue):
     """Seach a row to find a value and return the column index."""
     for cell in row:
         if cell.value == cellValue:
             return cell.col_idx
     return None
+
+
+def setColumn(sheet, column, value):
+    """ Set a column to a value."""
+    for row in range(2,sheet.max_row+1):
+        if sheet.cell(row=row, column=CDAcountNumberColumn).value is not None:
+           sheet.cell(row=row, column=column).value = value
+
+
+def findCellRowInColumn(targetSheet, column, cellValue, extactCase=True):
+    """Seach a column to find a value and return the row index.
+       extactCase=True will match the strings extactly
+       extactCase=False will match lower case versions of the strings"""
+
+    # Need to work with spripped values
+    cellStrippedValue = cellValue.strip()
+    # Save some time and only convert the key string once
+    if not extactCase:
+        lowerCellValue = cellStrippedValue.lower()
     
-def findCellRowInColumn (targetSheet, column, cellValue):
-    """Seach a column to find a value and return the row index."""
-    for row in range (1,targetSheet.max_row+1):
-        if targetSheet.cell(row=row, column=column).value == cellValue:
-            return targetSheet.cell(row=row, column=column).row
+    for row in range(1,targetSheet.max_row+1):
+        if targetSheet.cell(row=row, column=column).value is not None:
+            targetStrippedValue = targetSheet.cell(row=row, column=column).value.strip()
+            if extactCase:
+                if targetStrippedValue == cellStrippedValue:
+                    return targetSheet.cell(row=row, column=column).row
+            else:
+                if targetStrippedValue.lower() == lowerCellValue:
+                    return targetSheet.cell(row=row, column=column).row
+        
     return None
 
-def quickcheck(a):
-    """ """
-    a.cell(1,1,value=3)
+
+def findRowInColumns(targetSheet, firstColumn, firstValue, secondColumn, secondValue, extactCase=True):
+    """Match two colums to find a row. """
+    # Save some time and only convert the key string once
+    # print('In findRowInColumns extactCase = ', extactCase)
+    # looks like everthing needs to be stripped
+    fStrippedValue = firstValue.strip()
+    sStrippedValue = secondValue.strip()
+
+    if not extactCase:
+        lowerFirstValue = fStrippedValue.lower()
+        lowerSecondValue = sStrippedValue.lower()
+        # print('lower case values: "'+lowerFirstValue+'", "'+lowerSecondValue+'"')
+    
+    for row in range(1,targetSheet.max_row+1):
+        if targetSheet.cell(row=row, column=firstColumn).value is not None:
+            fStrippedColumnValue = targetSheet.cell(row=row, column=firstColumn).value
+            sStrippedColumnValue = targetSheet.cell(row=row, column=secondColumn).value
+            if extactCase:
+                if fStrippedColumnValue == fStrippedValue and \
+                   sStrippedColumnValue == sStrippedValue:
+                    return row
+            else:
+                if fStrippedColumnValue.lower() == lowerFirstValue and \
+                   sStrippedColumnValue.lower() ==lowerSecondValue:
+                    return row
+        
     return None
+
+
+def findRowIn3Columns(targetSheet, firstColumn, firstValue, secondColumn, secondValue, thirdColumn, thirdValue, extactCase=True):
+    """Match three colums to find a row. """
+    # Save some time and only convert the key string once
+    # print('In findRowInColumns extactCase = ', extactCase)
+    # looks like everthing needs to be stripped
+    fStrippedValue = firstValue.strip()
+    sStrippedValue = secondValue.strip()
+    tStrippedValue = thirdValue.strip()
+
+    if not extactCase:
+        lowerFirstValue = fStrippedValue.lower()
+        lowerSecondValue = sStrippedValue.lower()
+        lowerThirdValue = tStrippedValue.lower()
+        # print('lower case values: "'+lowerFirstValue+'", "'+lowerSecondValue+'"')
+    
+    for row in range(1,targetSheet.max_row+1):
+        if targetSheet.cell(row=row, column=firstColumn).value is not None and\
+           targetSheet.cell(row=row, column=secondColumn).value is not None and\
+           targetSheet.cell(row=row, column=thirdColumn).value is not None:
+            fStrippedColumnValue = targetSheet.cell(row=row, column=firstColumn).value
+            sStrippedColumnValue = targetSheet.cell(row=row, column=secondColumn).value
+            tStrippedColumnValue = targetSheet.cell(row=row, column=thirdColumn).value
+            if extactCase:
+                if fStrippedColumnValue == fStrippedValue and \
+                   sStrippedColumnValue == sStrippedValue and \
+                   tStrippedColumnValue == tStrippedValue:
+                    return row
+            else:
+                if fStrippedColumnValue.lower() == lowerFirstValue and \
+                   sStrippedColumnValue.lower() == lowerSecondValue and \
+                   tStrippedColumnValue.lower() == lowerThirdValue:
+                    return row
+        
+    return None
+
+
+def findCellRowInColumnHeader(targetSheet, columnHeader, cellValue, extactCase=True):
+    """ Find the column with the specified header and then find the row.
+    """
+    column = findCellInRow(row, columnHeader)
+    if column is not None:
+        return findCellRowInColumn(targetSheet, column, cellValue, extactCase)
+    return None
+
+
+def checkForNewCD (cdSheet, cdUpdateSheet):
+    """ Confirm that all CDs in cdUpdatesSheet are in the cdSheet.
+    """
+    for row in range(2, cdUpdateSheet.max_row+1):
+        cdRow = findCellRowInColumn(cdSheet, \
+                               CDAcountNumberColumn, \
+                               cdUpdateSheet.cell(row=row, \
+                                                  column=CDUpdatesAcountNumberColumn).value)
+        if cdRow is None:
+            printSheetRow(cdUpdateSheet[row], "New CD found", row)
+        else:
+            # Found a match, update the row:
+            cdSheet.cell(row=cdRow, column=CDCurrentValueColumn).value = \
+                        cdUpdateSheet.cell(row=row, \
+                                           column=CDUpdatesCurrentValueColumn).value
+            cdSheet.cell(row=cdRow, column=CDAutoUpdatedColumn).value = datetime.datetime.now()
+            cdSheet.cell(row=cdRow, column=CDTimesUpdatedColumn).value += 1
+            # Has this CD renewed?
+            maturity = cdSheet.cell(row=cdRow, column=CDCurrentMaturityColumn).value
+            if maturity < datetime.datetime.now():
+                print('CD has renewed: ', cdSheet.cell(row=cdRow, \
+                      column=CDOwnerColumn).value, \
+                      maturity, datetime.datetime.now(), \
+                      cdUpdateSheet.cell(row=row, column=CDUpdatesAcountNumberColumn).value)
+
 
 # path to files
 path = "c:/Users/gja/Documents/py_test/"
 
-# Header file
-headerFile = "headers.xlsx"
+# the files
+CDFile = "Certificates Check.xlsx"
+CDUpdatesFile = "Certificate Updates.xlsx"
 
-# kickout file
-kickoutFile = "Kickouts.xlsx"
+print('loading ',CDFile)
+CDWB = load_workbook(path+CDFile)
+CDSheet = CDWB['Sheet1']
+CDHeaderRow = CDSheet[1]
+#printSheetRow(CDHeaderRow, "Headers", CDFile)
 
-# cvent contacts
-cventContactFile = "CventContacts.xlsx"
+print('loading ',CDUpdatesFile)
+CDUpdatesWB = load_workbook(path+CDUpdatesFile)
+CDUpdatesSheet = CDUpdatesWB['Sheet1']
+CDUpdatesHeaderRow = CDUpdatesSheet[1]
+#printSheetRow(CDUpdatesHeaderRow, "Headers", CDUpdatesFile)
 
-# load the headers
-header = load_workbook(path+headerFile)
-headerSheet = header['Sheet1']
-headerHeaderRow = headerSheet[1]
-printSheetRow (headerHeaderRow,"Headers", headerFile)
-print (findCellInRow(headerHeaderRow, "Seven"))
-print ("max row = ",headerSheet.max_row)
-print ("max col = ",headerSheet.max_column)
-quickcheck(headerSheet)
-print (headerSheet.cell(1,1), " = ",headerSheet.cell(1,1).value)
+# Set header values
+accountNumber = 'Account Number'
+CDAcountNumberColumn = findCellInRow(CDSheet[1], accountNumber)
+CDUpdatesAcountNumberColumn = findCellInRow(CDUpdatesSheet[1], accountNumber)
 
-# load the kickout fileheader
-kickout = load_workbook(path+kickoutFile)
-kickoutSheet = kickout['Sheet1']
-kickoutHeaderRow = kickoutSheet[1]
-printSheetRow (kickoutHeaderRow,"Headers", kickoutFile)
+CDCurrentValue = 'Current Value'
+CDUpdatesCurrentValue = 'Ending Balance'
+CDCurrentValueColumn = findCellInRow(CDSheet[1], CDCurrentValue)
+CDUpdatesCurrentValueColumn = findCellInRow(CDUpdatesSheet[1], CDUpdatesCurrentValue)
 
-# load the cvent contact fileheader 
-cventContact = load_workbook(path+cventContactFile)
-cventContactSheet = cventContact['Sheet1']
-cventContactHeaderRow = cventContactSheet[1]
-printSheetRow (cventContactHeaderRow,"Headers", cventContactFile)
+currentMaturity = 'Current Maturity'
+CDCurrentMaturityColumn = findCellInRow(CDSheet[1], currentMaturity)
 
-# create a new worksheet to map the required column from kickout to the contact colums
-# row 1 will be the headers from the kickout file
-# row 2 will be the corresponding column index of the contact file
-columnWB = Workbook()
-columnMap = columnWB.active
-for cell in kickoutHeaderRow:
-    columnMap.cell(row=1,column=cell.col_idx,value=cell.value)
-    columnMap.cell(row=2,column=cell.col_idx,value=findCellInRow(cventContactHeaderRow, cell.value))
-printSheetRow (columnMap[1],"Headers", "columnMap")
-printSheetRow (columnMap[2],"Contact Columns", "columnMap")
+autoUpdated = 'Auto Updated'
+CDAutoUpdatedColumn = findCellInRow(CDSheet[1], autoUpdated)
 
-# Set the column for the matching
-kickoutKeyColumn = findCellInRow(kickoutHeaderRow, "One")
-contactKeyColumn = findCellInRow(cventContactHeaderRow, "One")
+owner = 'Owner'
+CDOwnerColumn = findCellInRow(CDSheet[1], owner)
 
-# Find the kickout values in the contacts
-# once found build the using contact values to override kickout values
-col = kickoutKeyColumn
-for row in range (2,kickoutSheet.max_row+1):
-    #print("row=",row," column=",col)
-    kickoutCell = kickoutSheet.cell(row=row,column=col)
-    rowMatch = findCellRowInColumn(cventContactSheet,contactKeyColumn,kickoutCell.value)
-    # start a new row
-    newRow=columnMap.max_row+1
-    for setCol in range (1,columnMap.max_column+1):
-        columnMap.cell(row=newRow, column=setCol, value=kickoutSheet.cell(row=row,column=setCol).value)
-        if rowMatch is not None:
-            cventCell=cventContactSheet.cell(row=rowMatch,column=contactKeyColumn)
-            if cventCell.value is not None:
-                columnMap.cell(row=newRow, column=setCol, value=cventCell.value)
-                
-print ("max row = ",columnMap.max_row)
-print ("max col = ",columnMap.max_column)
+timesUpdated = 'Times Updated'
+CDTimesUpdatedColumn = findCellInRow(CDSheet[1], timesUpdated)
 
-print ("Done")
+# Clear out Times updated
+setColumn(CDSheet, CDTimesUpdatedColumn, 0)
 
+# Check for new CDs
+checkForNewCD (CDSheet, CDUpdatesSheet)
 
+# Save the updated sheet
+CDWB.save(path+CDFile)
 
+# Exit
+print('Done')
 
